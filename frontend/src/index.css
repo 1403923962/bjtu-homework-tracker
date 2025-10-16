@@ -1,0 +1,23 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 dark:from-gray-900 dark:via-blue-900 dark:to-purple-900;
+    @apply min-h-screen;
+    @apply transition-colors duration-300;
+    margin: 0;
+    padding: 0;
+  }
+}
+
+@layer utilities {
+  .glass {
+    @apply bg-white/70 dark:bg-gray-800/70 backdrop-blur-xl border border-white/20 dark:border-gray-700/50;
+  }
+
+  .glass-card {
+    @apply glass rounded-2xl shadow-xl hover:shadow-2xl transition-all duration-300;
+  }
+}
