@@ -7,6 +7,9 @@ import fs from 'fs/promises'
 
 export class AutoLogin {
   private cookie: Record<string, string> = {}
+  private browser: any = null
+  private context: any = null
+  private page: any = null
 
   /**
    * OCR captcha using Tesseract.js
@@ -173,28 +176,38 @@ export class AutoLogin {
         await page.waitForTimeout(3000)
       }
 
-      // Get cookies
-      const cookies = await context.cookies()
-      console.log(`获取到 ${cookies.length} 个cookies`)
-      console.log('可用cookies:', cookies.map(c => c.name))
+      // After successful login on bksy, navigate to internal API to get cookies for that domain
+      console.log('登录成功，正在导航到内部API系统获取cookies...')
+      await page.goto('http://123.121.147.7:88/ve/back/coursePlatform/coursePlatform.shtml?method=toCoursePlatformIndex', {
+        waitUntil: 'networkidle',
+        timeout: 30000
+      })
+      await page.waitForTimeout(2000)
 
-      // Extract session cookie (ASP.NET_SessionId or EXESAC.SAAS.SessionId)
-      const aspSessionCookie = cookies.find(c => c.name === 'ASP.NET_SessionId')
-      const saasSessionCookie = cookies.find(c => c.name === 'EXESAC.SAAS.SessionId')
+      console.log(`内部API当前URL: ${page.url()}`)
 
-      if (!aspSessionCookie && !saasSessionCookie) {
-        throw new Error('未找到有效的Session cookie')
-      }
+      // Get cookies from both domains
+      const allCookies = await context.cookies()
+      console.log(`获取到 ${allCookies.length} 个cookies (所有域名)`)
+      console.log('所有cookies:', allCookies.map(c => `${c.name} (${c.domain})`))
 
-      // Use both cookies if available
+      // Extract session cookies for the internal API domain
+      const internalCookies = allCookies.filter(c =>
+        c.domain.includes('123.121.147.7') ||
+        c.domain.includes('.bjtu.edu.cn')
+      )
+
+      console.log(`内部API cookies (${internalCookies.length}个):`, internalCookies.map(c => c.name))
+
+      // Build cookie object
       this.cookie = {}
-      if (aspSessionCookie) {
-        this.cookie['ASP.NET_SessionId'] = aspSessionCookie.value
-        console.log(`成功获取ASP.NET_SessionId: ${aspSessionCookie.value.substring(0, 20)}...`)
+      for (const cookie of internalCookies) {
+        this.cookie[cookie.name] = cookie.value
+        console.log(`成功获取 ${cookie.name}: ${cookie.value.substring(0, 20)}...`)
       }
-      if (saasSessionCookie) {
-        this.cookie['EXESAC.SAAS.SessionId'] = saasSessionCookie.value
-        console.log(`成功获取EXESAC.SAAS.SessionId: ${saasSessionCookie.value.substring(0, 20)}...`)
+
+      if (Object.keys(this.cookie).length === 0) {
+        throw new Error('未找到有效的Session cookie')
       }
 
       // Cleanup
@@ -212,5 +225,127 @@ export class AutoLogin {
 
   getCookie(): Record<string, string> {
     return this.cookie
+  }
+
+  /**
+   * Login and return the browser context for making authenticated API calls
+   */
+  async loginWithContext(studentId: string, password: string): Promise<{ browser: any; context: any; page: any }> {
+    const browser = await chromium.launch({
+      headless: true
+    })
+
+    const context = await browser.newContext()
+    const page = await context.newPage()
+
+    try {
+      // Navigate directly to student login page (might redirect to CAS)
+      console.log('直接访问学生登录页面...')
+      await page.goto('https://bksy.bjtu.edu.cn/login_introduce_s.html', {
+        waitUntil: 'networkidle'
+      })
+      await page.waitForTimeout(2000)
+
+      // Check current URL after potential redirect
+      const currentUrl = page.url()
+      console.log(`当前URL: ${currentUrl}`)
+
+      // Take screenshot to debug
+      await page.screenshot({ path: 'debug_page.png' })
+      console.log('已截图保存到 debug_page.png')
+
+      // Check if redirected to CAS login
+      if (currentUrl.includes('cas.bjtu.edu.cn')) {
+        console.log('检测到CAS登录页面，使用CAS登录流程')
+
+        // Fill CAS login form
+        await page.fill('#id_loginname', studentId)
+        await page.fill('#id_password', password)
+
+        // Screenshot captcha
+        console.log('截图验证码...')
+        const captchaElement = page.locator('img.captcha')
+        await captchaElement.screenshot({ path: 'captcha_temp.png' })
+
+        // OCR recognition
+        console.log('OCR识别验证码...')
+        const captchaAnswer = await this.ocrCaptcha('captcha_temp.png')
+        console.log(`验证码答案: ${captchaAnswer}`)
+
+        // Fill captcha
+        await page.fill('#id_captcha_1', captchaAnswer)
+
+        // Submit login
+        console.log('提交CAS登录...')
+        await page.click('button[type="submit"]')
+        await page.waitForTimeout(3000)
+
+        // Wait for redirect back to bksy
+        await page.waitForURL('**/bksy.bjtu.edu.cn/**', { timeout: 10000 })
+        console.log('登录成功，已跳转回学生页面')
+      } else {
+        // Fill login form on bksy page
+        console.log(`在bksy页面填写学号: ${studentId}`)
+        // Try placeholder-based selector
+        await page.getByPlaceholder('学号').fill(studentId)
+
+        // Fill password
+        console.log('填写密码')
+        await page.getByPlaceholder('密码').fill(password)
+
+        // Screenshot captcha - it's the last image on the page (index 6)
+        console.log('截图验证码...')
+        // Wait a moment for image to load
+        await page.waitForTimeout(1000)
+
+        // Get all images and use the last one (the captcha)
+        const allImages = await page.locator('img').all()
+        console.log(`找到 ${allImages.length} 个图片元素`)
+
+        if (allImages.length === 0) {
+          throw new Error('未找到任何图片元素')
+        }
+
+        // Use the last image (the captcha)
+        const captchaElement = allImages[allImages.length - 1]
+        await captchaElement.screenshot({ path: 'captcha_temp.png' })
+        console.log('验证码截图已保存')
+
+        // OCR recognition
+        console.log('OCR识别验证码...')
+        const captchaAnswer = await this.ocrCaptcha('captcha_temp.png')
+        console.log(`验证码答案: ${captchaAnswer}`)
+
+        // Fill captcha
+        console.log('填写验证码')
+        await page.getByPlaceholder('验证码').fill(captchaAnswer)
+
+        // Submit login
+        console.log('提交登录...')
+        await page.getByRole('button', { name: /登录|登 录/ }).click()
+        await page.waitForTimeout(3000)
+      }
+
+      // After successful login on bksy, navigate to internal API to establish session
+      console.log('登录成功，正在导航到内部API系统...')
+      await page.goto('http://123.121.147.7:88/ve/back/coursePlatform/coursePlatform.shtml?method=toCoursePlatformIndex', {
+        waitUntil: 'networkidle',
+        timeout: 30000
+      })
+      await page.waitForTimeout(2000)
+
+      console.log(`内部API session已建立，当前URL: ${page.url()}`)
+
+      // Cleanup
+      await fs.unlink('captcha_temp.png').catch(() => {})
+
+      // Return browser context for API calls
+      return { browser, context, page }
+
+    } catch (error: any) {
+      console.error('登录失败:', error.message)
+      await browser.close()
+      throw error
+    }
   }
 }

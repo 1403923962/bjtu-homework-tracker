@@ -3,6 +3,7 @@ import { cors } from 'hono/cors'
 import { z } from 'zod'
 import crypto from 'crypto'
 import { AutoLogin } from './login'
+import { BJTUClientPlaywright } from './bjtu_client_playwright'
 
 const app = new Hono()
 
@@ -40,11 +41,18 @@ class BJTUClient {
   }
 
   private async request(url: string, referer?: string): Promise<any> {
+    // Build cookie string from all available cookies
+    const cookieParts: string[] = []
+    for (const [name, value] of Object.entries(this.cookie)) {
+      cookieParts.push(`${name}=${value}`)
+    }
+    const cookieString = cookieParts.join('; ')
+
     const headers: Record<string, string> = {
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
       'Accept': '*/*',
       'Accept-Language': 'zh-CN,zh;q=0.9',
-      'Cookie': `JSESSIONID=${this.cookie['JSESSIONID']}`,
+      'Cookie': cookieString,
       'X-Requested-With': 'XMLHttpRequest',
       'Host': '123.121.147.7:88'
     }
@@ -52,8 +60,21 @@ class BJTUClient {
     if (referer) headers['Referer'] = referer
     if (this.sessionId) headers['sessionId'] = this.sessionId
 
+    console.log(`📤 请求: ${url}`)
+    console.log(`🍪 Cookie: ${cookieString.substring(0, 100)}...`)
+
     const response = await fetch(url, { headers })
-    return response.json()
+    const text = await response.text()
+
+    console.log(`📥 响应状态: ${response.status}`)
+    console.log(`📄 响应预览: ${text.substring(0, 200)}...`)
+
+    try {
+      return JSON.parse(text)
+    } catch (e) {
+      console.error('❌ JSON解析失败，返回的是HTML:', text.substring(0, 500))
+      throw new Error(`API返回了HTML而不是JSON: ${text.substring(0, 200)}`)
+    }
   }
 
   async getCurrentSemester(): Promise<string> {
@@ -150,27 +171,34 @@ app.get('/health', (c) => {
 })
 
 app.post('/api/homework-query', async (c) => {
+  const client = new BJTUClientPlaywright()
+
   try {
     const body = await c.req.json()
     const login = LoginSchema.parse(body)
     const filters = FilterSchema.parse(body)
-
-    const client = new BJTUClient()
 
     // Login (no longer need use_hash parameter)
     await client.login(login.student_id, login.password || '')
 
     // Get data
     const semester = await client.getCurrentSemester()
-    await client.getSessionId()
+    // SKIP getSessionId() - that endpoint seems to have different auth requirements
+    //await client.getSessionId()
     const courses = await client.getCourses(semester)
+
+    console.log(`📚 找到 ${courses.length} 门课程`)
 
     // Get all homework
     const allHomework: any[] = []
     for (const course of courses) {
+      console.log(`正在获取课程「${course.name}」的作业...`)
       const homework = await client.getHomeworkForCourse(course, semester)
+      console.log(`  └─ 找到 ${homework.length} 个作业`)
       allHomework.push(...homework)
     }
+
+    console.log(`✅ 总共找到 ${allHomework.length} 个作业`)
 
     // Apply filters
     const filtered = allHomework
@@ -188,6 +216,11 @@ app.post('/api/homework-query', async (c) => {
         create_date: hw.open_date || ''
       }))
 
+    console.log(`🔍 过滤后剩余 ${filtered.length} 个作业`)
+
+    // Close browser
+    await client.close()
+
     return c.json({
       success: true,
       data: filtered,
@@ -196,6 +229,9 @@ app.post('/api/homework-query', async (c) => {
     })
 
   } catch (error: any) {
+    // Make sure to close browser on error
+    await client.close().catch(() => {})
+
     return c.json({
       success: false,
       error: error.message || 'Internal server error'
