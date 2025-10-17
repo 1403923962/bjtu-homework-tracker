@@ -24,14 +24,13 @@ function App() {
     setLoading(true)
 
     try {
-      const response = await fetch('http://localhost:3001/api/homework', {
+      // 调用Flask API (端口5000)
+      const response = await fetch('http://localhost:5000/api/homework-query', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          student_id: studentId,
-          password: password,
-          use_hash: false,
-          finish_status: 'unfinished'
+          stu_id: studentId,
+          stu_pwd: password || `Bjtu@${studentId}` // 如果密码为空，使用默认密码
         })
       })
 
@@ -40,10 +39,10 @@ function App() {
         setHomeworks(data.data)
         setIsLoggedIn(true)
       } else {
-        alert('登录失败：' + data.error)
+        alert('登录失败：' + (data.error || '未知错误'))
       }
     } catch (error: any) {
-      alert('请求失败，请确保后端服务已启动：' + error.message)
+      alert('请求失败，请确保后端服务已启动 (http://localhost:5000)\n错误信息：' + error.message)
     } finally {
       setLoading(false)
     }
