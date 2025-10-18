@@ -4,11 +4,15 @@ import { z } from 'zod'
 import crypto from 'crypto'
 import { AutoLogin } from './login'
 import { BJTUClientPlaywright } from './bjtu_client_playwright'
+import { CacheManager } from './cache_manager'
 
 const app = new Hono()
 
 // CORS middleware
 app.use('/*', cors())
+
+// Initialize cache manager
+const cacheManager = new CacheManager('./cache')
 
 // Types and Schemas
 const LoginSchema = z.object({
@@ -170,6 +174,45 @@ app.get('/health', (c) => {
   })
 })
 
+// Get cached homework data (fast, returns immediately)
+app.post('/api/homework-cache', async (c) => {
+  try {
+    const body = await c.req.json()
+    const login = LoginSchema.parse(body)
+
+    console.log(`📦 查询缓存: ${login.student_id}`)
+
+    const cache = await cacheManager.get(login.student_id)
+
+    if (!cache) {
+      return c.json({
+        success: false,
+        error: 'No cache found',
+        message: '无缓存数据，请先刷新'
+      }, 404)
+    }
+
+    const age = cacheManager.getAge(login.student_id)
+    const ageMinutes = age ? Math.floor(age / (1000 * 60)) : 0
+
+    return c.json({
+      success: true,
+      data: cache.data,
+      summary: cache.summary,
+      semester: cache.semester,
+      cached: true,
+      timestamp: cache.timestamp,
+      age_minutes: ageMinutes
+    })
+  } catch (error: any) {
+    console.error(`❌ 错误: ${error.message}`)
+    return c.json({
+      success: false,
+      error: error.message || 'Internal server error'
+    }, 500)
+  }
+})
+
 app.post('/api/homework-query', async (c) => {
   const client = new BJTUClientPlaywright()
 
@@ -178,27 +221,46 @@ app.post('/api/homework-query', async (c) => {
     const login = LoginSchema.parse(body)
     const filters = FilterSchema.parse(body)
 
-    // Login (no longer need use_hash parameter)
+    console.log(`🔐 正在登录...`)
+    // Login with new working implementation
     await client.login(login.student_id, login.password || '')
+    console.log(`✅ 登录成功`)
 
     // Get data
+    console.log(`📅 获取当前学期...`)
     const semester = await client.getCurrentSemester()
-    // SKIP getSessionId() - that endpoint seems to have different auth requirements
-    //await client.getSessionId()
-    const courses = await client.getCourses(semester)
+    console.log(`✅ 当前学期: ${semester}`)
 
-    console.log(`📚 找到 ${courses.length} 门课程`)
+    console.log(`📚 获取课程列表...`)
+    const courses = await client.getCourses(semester)
+    console.log(`✅ 找到 ${courses.length} 门课程`)
 
     // Get all homework
     const allHomework: any[] = []
     for (const course of courses) {
-      console.log(`正在获取课程「${course.name}」的作业...`)
-      const homework = await client.getHomeworkForCourse(course, semester)
-      console.log(`  └─ 找到 ${homework.length} 个作业`)
-      allHomework.push(...homework)
+      console.log(`📖 正在获取课程「${course.name}」的作业...`)
+      try {
+        const homework = await client.getHomeworkForCourse(course, semester)
+        console.log(`  └─ 找到 ${homework.length} 个任务`)
+        allHomework.push(...homework)
+      } catch (e: any) {
+        console.log(`  └─ ⚠️  获取失败: ${e.message}`)
+      }
     }
 
     console.log(`✅ 总共找到 ${allHomework.length} 个作业`)
+
+    // Calculate days left for each homework
+    const now = new Date()
+    allHomework.forEach(hw => {
+      if (hw.end_time) {
+        const deadline = new Date(hw.end_time)
+        const daysLeft = Math.ceil((deadline.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+        hw.daysLeft = daysLeft
+        hw.isOverdue = daysLeft < 0
+        hw.isUrgent = daysLeft >= 0 && daysLeft <= 3
+      }
+    })
 
     // Apply filters
     const filtered = allHomework
@@ -210,25 +272,44 @@ app.post('/api/homework-query', async (c) => {
         course_name: hw.course_name || '',
         content: cleanHtml(hw.content || ''),
         due_time: hw.end_time || null,
-        submit_status: hw.subStatus || '',
+        submit_status: hw.subStatus || '未提交',
         submit_count: hw.submitCount || 0,
         total_count: hw.allCount || 0,
-        create_date: hw.open_date || ''
+        create_date: hw.open_date || '',
+        daysLeft: hw.daysLeft,
+        isOverdue: hw.isOverdue,
+        isUrgent: hw.isUrgent
       }))
 
     console.log(`🔍 过滤后剩余 ${filtered.length} 个作业`)
 
+    // Calculate summary statistics
+    const summary = {
+      total: allHomework.length,
+      unsubmitted: allHomework.filter(hw => hw.subStatus === '未提交').length,
+      submitted: allHomework.filter(hw => hw.subStatus === '已提交').length,
+      overdue: allHomework.filter(hw => hw.isOverdue && hw.subStatus === '未提交').length,
+      urgent: allHomework.filter(hw => hw.isUrgent && hw.subStatus === '未提交').length
+    }
+
     // Close browser
     await client.close()
+    console.log(`🔒 浏览器已关闭`)
+
+    // Save to cache
+    await cacheManager.save(login.student_id, filtered, summary, semester)
 
     return c.json({
       success: true,
       data: filtered,
-      total: filtered.length,
-      semester
+      summary,
+      semester,
+      cached: false,
+      timestamp: Date.now()
     })
 
   } catch (error: any) {
+    console.error(`❌ 错误: ${error.message}`)
     // Make sure to close browser on error
     await client.close().catch(() => {})
 
@@ -246,6 +327,8 @@ const port = process.env.PORT || 5000
 console.log(`🚀 BJTU Homework Tracker API (Desktop Edition)`)
 console.log(`📡 Server running on http://localhost:${port}`)
 console.log(`🔧 Stack: Bun + Hono + Playwright + Tesseract.js`)
+console.log(`💾 Cache: Enabled (./cache)`)
 console.log(`📋 Endpoints:`)
 console.log(`   - GET  /health`)
-console.log(`   - POST /api/homework-query`)
+console.log(`   - POST /api/homework-cache  (快速返回缓存数据)`)
+console.log(`   - POST /api/homework-query  (完整刷新并缓存)`)

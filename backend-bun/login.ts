@@ -4,6 +4,11 @@
 import { chromium, type Page } from 'playwright'
 import Tesseract from 'tesseract.js'
 import fs from 'fs/promises'
+import path from 'path'
+import { fileURLToPath } from 'url'
+
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
 
 export class AutoLogin {
   private cookie: Record<string, string> = {}
@@ -23,8 +28,9 @@ export class AutoLogin {
       const { promisify } = await import('util')
       const execPromise = promisify(exec)
 
-      // Call Python OCR service
-      const { stdout, stderr } = await execPromise(`python ocr_service.py ${imagePath}`)
+      // Call Python OCR service (use absolute path)
+      const ocrScriptPath = path.join(__dirname, 'ocr_service.py')
+      const { stdout, stderr } = await execPromise(`python "${ocrScriptPath}" ${imagePath}`)
 
       if (stderr && stderr.trim()) {
         console.error('Python OCR错误:', stderr.trim())
@@ -232,10 +238,40 @@ export class AutoLogin {
    */
   async loginWithContext(studentId: string, password: string): Promise<{ browser: any; context: any; page: any }> {
     const browser = await chromium.launch({
-      headless: true
+      headless: true,  // 使用无头模式进行测试
+      args: [
+        '--disable-blink-features=AutomationControlled',  // 禁用自动化控制特征
+        '--disable-dev-shm-usage',
+        '--no-sandbox',
+        '--disable-setuid-sandbox'
+      ]
     })
 
-    const context = await browser.newContext()
+    const context = await browser.newContext({
+      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      viewport: { width: 1920, height: 1080 },
+      locale: 'zh-CN',
+      timezoneId: 'Asia/Shanghai'
+    })
+
+    // 注入反检测脚本
+    await context.addInitScript(() => {
+      // 移除webdriver标记
+      Object.defineProperty(navigator, 'webdriver', {
+        get: () => false
+      })
+
+      // 修改plugins
+      Object.defineProperty(navigator, 'plugins', {
+        get: () => [1, 2, 3, 4, 5]
+      })
+
+      // 修改languages
+      Object.defineProperty(navigator, 'languages', {
+        get: () => ['zh-CN', 'zh', 'en']
+      })
+    })
+
     const page = await context.newPage()
 
     try {
@@ -326,15 +362,37 @@ export class AutoLogin {
         await page.waitForTimeout(3000)
       }
 
-      // After successful login on bksy, navigate to internal API to establish session
-      console.log('登录成功，正在导航到内部API系统...')
-      await page.goto('http://123.121.147.7:88/ve/back/coursePlatform/coursePlatform.shtml?method=toCoursePlatformIndex', {
-        waitUntil: 'networkidle',
-        timeout: 30000
-      })
-      await page.waitForTimeout(2000)
+      // After successful login on bksy, directly navigate to course platform via NoMasterJumpPage
+      console.log('登录成功，直接访问智慧课程平台跳转页面...')
 
-      console.log(`内部API session已建立，当前URL: ${page.url()}`)
+      try {
+        // 直接访问智慧课程平台的跳转URL
+        console.log('访问跳转页面: NoMasterJumpPage.aspx')
+        await page.goto('https://bksycenter.bjtu.edu.cn/NoMasterJumpPage.aspx?URL=jwcZhjx&FPC=page:jwcZhjx', {
+          waitUntil: 'domcontentloaded',
+          timeout: 30000
+        })
+
+        // 等待跳转完成
+        await page.waitForTimeout(3000)
+
+        const currentUrl = page.url()
+        console.log(`✅ 当前URL: ${currentUrl}`)
+
+        // 检查URL中是否包含sessionId
+        const sessionIdMatch = currentUrl.match(/sessionId=([A-F0-9]{32})/i)
+        if (sessionIdMatch) {
+          console.log(`🎉 成功！URL中包含sessionId: ${sessionIdMatch[1]}`)
+        } else {
+          console.warn('⚠️ URL中没有sessionId参数，但session可能仍然有效')
+        }
+
+        console.log(`✅ 智慧课程平台session已建立`)
+
+      } catch (e: any) {
+        console.error('⚠️ 访问课程平台时出错:', e.message)
+        throw e
+      }
 
       // Cleanup
       await fs.unlink('captcha_temp.png').catch(() => {})
