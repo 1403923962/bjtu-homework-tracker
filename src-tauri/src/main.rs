@@ -58,20 +58,34 @@ fn start_backend_server(resource_path: Option<std::path::PathBuf>) -> Result<Chi
     let server_path = backend_dir.join("server.ts");
 
     let (command, args) = if tsx_path.exists() {
-        println!("Using tsx: {:?}", tsx_path);
+        println!("✅ Using tsx: {:?}", tsx_path);
         (tsx_path, vec![server_path])
     } else {
-        println!("tsx not found, using node directly");
+        println!("⚠️ tsx not found, using node directly");
         (PathBuf::from(node_command), vec![server_path])
     };
 
-    println!("Starting backend server: {:?} {:?}", command, args);
+    println!("🚀 Starting backend server: {:?} {:?}", command, args);
+
+    // Check if Playwright browsers are installed
+    let playwright_check = Command::new(node_command)
+        .args(&["node_modules/.bin/playwright", "install", "chromium"])
+        .current_dir(&backend_dir)
+        .output();
+
+    if let Ok(output) = playwright_check {
+        if output.status.success() {
+            println!("✅ Playwright browsers ready");
+        }
+    }
 
     let child = Command::new(command)
         .args(args)
         .current_dir(&backend_dir)
         .env("PORT", "5000")
         .env("NODE_ENV", "production")
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
         .spawn()
         .map_err(|e| format!("Failed to start backend server: {}", e))?;
 
