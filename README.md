@@ -2,6 +2,8 @@
 
 > 轻量级作业管理桌面应用，支持云端SaaS部署
 
+> ⚠️ **仅供学习交流使用，请勿用于商业用途**
+
 ![Tauri](https://img.shields.io/badge/Tauri-1.5-FFC131?logo=tauri)
 ![React](https://img.shields.io/badge/React-18-61dafb?logo=react)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.0-3178c6?logo=typescript)
@@ -76,8 +78,6 @@ npm run tauri:dev
 ```
 
 ### 云端部署
-
-详见 [部署文档](./DEPLOYMENT.md)
 
 **快速部署：**
 ```bash
