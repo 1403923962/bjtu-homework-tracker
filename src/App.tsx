@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import { appWindow } from '@tauri-apps/api/window'
 import { invoke } from '@tauri-apps/api/tauri'
+import { open } from '@tauri-apps/api/shell'
 
 type View = 'home' | 'detail' | 'settings'
 
@@ -390,6 +391,14 @@ function App() {
               >
                 {loading ? '登录中...' : '开始追踪作业'}
               </motion.button>
+
+              <button
+                type="button"
+                onClick={() => open('https://bksycenter.bjtu.edu.cn/UserInfoSettings/PasswordRetake.aspx?type=3')}
+                className="w-full mt-3 text-sm text-gray-600 dark:text-gray-400 hover:text-purple-600 dark:hover:text-purple-400 transition-colors"
+              >
+                忘记密码？
+              </button>
             </form>
           </motion.div>
         </div>
