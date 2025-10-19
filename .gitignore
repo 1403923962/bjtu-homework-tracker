@@ -56,3 +56,13 @@ nul
 cache/
 node_modules/
 browsers/
+
+# Development documentation (may contain sensitive info)
+APP_GUIDE.md
+CHANGELOG.md
+DEBUG-STATUS.md
+DESKTOP_INTEGRATION_SUCCESS.md
+FINAL-STATUS.md
+INTEGRATION.md
+SUCCESS.md
+UPDATE-SUMMARY.md
