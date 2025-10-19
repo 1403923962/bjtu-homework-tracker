@@ -39,7 +39,7 @@
     },
     "bundle": {
       "active": true,
-      "targets": "all",
+      "targets": "nsis",
       "identifier": "com.homework.tracker",
       "icon": [
         "icons/32x32.png",
