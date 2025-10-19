@@ -76,6 +76,12 @@ function App() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     console.log('🔵 Login button clicked, student_id:', studentId)
+
+    // 验证学号格式：必须是8位数字
+    if (!/^\d{8}$/.test(studentId)) {
+      return
+    }
+
     setLoading(true)
 
     try {
@@ -163,6 +169,11 @@ function App() {
   }
 
   const handleRefresh = async () => {
+    // 验证学号格式
+    if (!/^\d{8}$/.test(studentId)) {
+      return
+    }
+
     setRefreshing(true)
     try {
       const fullResult = await invoke('fetch_homework_full', {
@@ -468,6 +479,15 @@ function App() {
                           <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400 mb-2">
                             <BookOpen className="w-4 h-4 text-purple-500" />
                             <span>{hw.course_name}</span>
+                            {hw.submit_count != null && hw.total_count != null && (
+                              <>
+                                <span className="text-gray-400 dark:text-gray-500">•</span>
+                                <Users className="w-4 h-4 text-blue-500" />
+                                <span className="text-xs font-medium">
+                                  {hw.submit_count}/{hw.total_count} 已交
+                                </span>
+                              </>
+                            )}
                           </div>
                           {hw.due_time && (
                             <div className="space-y-1">
@@ -587,6 +607,14 @@ function App() {
                                   <h4 className="font-medium text-gray-800 dark:text-white mb-1">
                                     {hw.title}
                                   </h4>
+                                  {hw.submit_count != null && hw.total_count != null && (
+                                    <div className="flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-400 mb-1.5">
+                                      <Users className="w-3.5 h-3.5 text-blue-500" />
+                                      <span className="font-medium">
+                                        {hw.submit_count}/{hw.total_count} 已交
+                                      </span>
+                                    </div>
+                                  )}
                                   <p className="text-sm text-gray-600 dark:text-gray-400 line-clamp-2 mb-2">
                                     {hw.content}
                                   </p>

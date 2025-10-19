@@ -1,6 +1,12 @@
 import app from './index'
+import { ensurePlaywrightInstalled } from './setup-playwright'
 
 const port = process.env.PORT || 5000
+
+// 在后台异步检查playwright（不阻塞服务器启动）
+ensurePlaywrightInstalled().catch(err => {
+  console.error('Playwright检查失败:', err)
+})
 
 // For Bun
 if (typeof Bun !== 'undefined') {

@@ -51,3 +51,8 @@ src-tauri/WixTools/
 
 # Icons (except source)
 app-icon.png
+nul
+*.png
+cache/
+node_modules/
+browsers/

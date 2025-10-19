@@ -21,26 +21,15 @@ export class AutoLogin {
    */
   private async ocrCaptcha(imagePath: string): Promise<string> {
     try {
-      // Use Python ddddocr for better accuracy
-      console.log('调用ddddocr识别验证码...')
+      // Use Node.js ddddocr-node (no Python dependency)
+      console.log('调用ddddocr-node识别验证码...')
 
-      const { exec } = await import('child_process')
-      const { promisify } = await import('util')
-      const execPromise = promisify(exec)
-
-      // Call Python OCR service (use absolute path)
-      const ocrScriptPath = path.join(__dirname, 'ocr_service.py')
-      const { stdout, stderr } = await execPromise(`python "${ocrScriptPath}" ${imagePath}`)
-
-      if (stderr && stderr.trim()) {
-        console.error('Python OCR错误:', stderr.trim())
-      }
-
-      const result = stdout.trim()
-      console.log(`ddddocr识别结果: "${result}"`)
+      // 使用Node.js版本的OCR服务（去除Python依赖）
+      const { nodeOcrService } = await import('./ocr_service_node')
+      const result = await nodeOcrService.recognizeCaptcha(imagePath)
 
       if (!result || result.length === 0) {
-        console.warn('⚠️  ddddocr无法识别验证码！')
+        console.warn('⚠️  ddddocr-node无法识别验证码！')
         return ''
       }
 
@@ -98,7 +87,8 @@ export class AutoLogin {
       // Navigate directly to student login page (might redirect to CAS)
       console.log('直接访问学生登录页面...')
       await page.goto('https://bksy.bjtu.edu.cn/login_introduce_s.html', {
-        waitUntil: 'networkidle'
+        waitUntil: 'networkidle',
+        timeout: 120000  // 2 minutes timeout
       })
       await page.waitForTimeout(2000)
 
@@ -122,6 +112,8 @@ export class AutoLogin {
         console.log('截图验证码...')
         const captchaElement = page.locator('img.captcha')
         await captchaElement.screenshot({ path: 'captcha_temp.png' })
+        // Save a copy for testing
+        await captchaElement.screenshot({ path: 'captcha_for_test.png' })
 
         // OCR recognition
         console.log('OCR识别验证码...')
@@ -186,7 +178,7 @@ export class AutoLogin {
       console.log('登录成功，正在导航到内部API系统获取cookies...')
       await page.goto('http://123.121.147.7:88/ve/back/coursePlatform/coursePlatform.shtml?method=toCoursePlatformIndex', {
         waitUntil: 'networkidle',
-        timeout: 30000
+        timeout: 120000  // 2 minutes timeout
       })
       await page.waitForTimeout(2000)
 
@@ -278,7 +270,8 @@ export class AutoLogin {
       // Navigate directly to student login page (might redirect to CAS)
       console.log('直接访问学生登录页面...')
       await page.goto('https://bksy.bjtu.edu.cn/login_introduce_s.html', {
-        waitUntil: 'networkidle'
+        waitUntil: 'networkidle',
+        timeout: 120000  // 2 minutes timeout
       })
       await page.waitForTimeout(2000)
 
@@ -302,6 +295,8 @@ export class AutoLogin {
         console.log('截图验证码...')
         const captchaElement = page.locator('img.captcha')
         await captchaElement.screenshot({ path: 'captcha_temp.png' })
+        // Save a copy for testing
+        await captchaElement.screenshot({ path: 'captcha_for_test.png' })
 
         // OCR recognition
         console.log('OCR识别验证码...')
@@ -370,7 +365,7 @@ export class AutoLogin {
         console.log('访问跳转页面: NoMasterJumpPage.aspx')
         await page.goto('https://bksycenter.bjtu.edu.cn/NoMasterJumpPage.aspx?URL=jwcZhjx&FPC=page:jwcZhjx', {
           waitUntil: 'domcontentloaded',
-          timeout: 30000
+          timeout: 120000  // 2 minutes timeout
         })
 
         // 等待跳转完成

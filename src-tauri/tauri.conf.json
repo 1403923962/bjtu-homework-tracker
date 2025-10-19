@@ -13,6 +13,14 @@
   "tauri": {
     "allowlist": {
       "all": false,
+      "dialog": {
+        "all": false,
+        "ask": true,
+        "confirm": true,
+        "message": true,
+        "open": true,
+        "save": true
+      },
       "shell": {
         "all": false,
         "open": true
@@ -32,7 +40,7 @@
     "bundle": {
       "active": true,
       "targets": ["nsis"],
-      "identifier": "com.bjtu.homework-tracker",
+      "identifier": "com.homework.tracker",
       "icon": [
         "icons/32x32.png",
         "icons/128x128.png",
@@ -40,9 +48,7 @@
         "icons/icon.icns",
         "icons/icon.ico"
       ],
-      "resources": [
-        "../backend-bun"
-      ]
+      "resources": []
     },
     "security": {
       "csp": null

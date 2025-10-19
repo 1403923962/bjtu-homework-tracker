@@ -1,0 +1,8 @@
+# 排除不必要的文件
+node_modules/playwright/
+node_modules/playwright-core/
+node_modules/.cache/
+browsers/
+.cache/
+*.log
+.turbo/
