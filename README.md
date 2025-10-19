@@ -60,8 +60,8 @@
 
 ```bash
 # 1. 克隆仓库
-git clone https://github.com/YOUR_USERNAME/homework-tracker.git
-cd homework-tracker
+git clone https://github.com/1403923962/bjtu-homework-tracker.git
+cd bjtu-homework-tracker
 
 # 2. 安装依赖
 npm install
@@ -172,7 +172,7 @@ appWindow.close()
   },
   "tauri": {
     "bundle": {
-      "identifier": "com.bjtu.homework-tracker"
+      "identifier": "com.homework.tracker"
     },
     "windows": [{
       "width": 1024,
