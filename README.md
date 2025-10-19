@@ -1,105 +1,109 @@
-# BJTU 作业追踪器 - 桌面版 🖥️
+# 作业追踪器 - 桌面版 🖥️
 
-> 基于 Tauri + React + TypeScript 的超轻量桌面应用
+> 轻量级作业管理桌面应用，支持云端SaaS部署
 
 ![Tauri](https://img.shields.io/badge/Tauri-1.5-FFC131?logo=tauri)
 ![React](https://img.shields.io/badge/React-18-61dafb?logo=react)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.0-3178c6?logo=typescript)
+![License](https://img.shields.io/badge/License-MIT-green.svg)
 
 ## ✨ 特性
 
-### 🪶 超轻量
-- **仅 3-5MB** - 比 Electron 小 20 倍！
-- **原生性能** - Rust 后端，系统原生窗口
+### 🪶 极致轻量
+- **仅 2.3MB** - 云端模式安装包
 - **快速启动** - 秒开无等待
+- **低资源占用** - 内存仅50MB
 
-### 🎨 炫酷 UI
-- **磨砂玻璃效果** - Glassmorphism 设计
-- **3D 浮动背景** - 动态渐变球体
+### 🔒 安全可靠
+- **HTTPS加密** - 全程加密通信
+- **输入验证** - 前端静默拦截
+- **权限最小化** - 沙箱隔离运行
+
+### 🎨 现代UI
+- **磨砂玻璃** - Glassmorphism 设计
 - **流畅动画** - Framer Motion 驱动
-- **无边框窗口** - 自定义标题栏
-- **暗色模式** - 一键切换
+- **暗色模式** - 护眼主题切换
+- **无边框窗口** - 现代化体验
 
-### 🔐 安全隐私
-- **本地运行** - 数据不上传云端
-- **沙箱隔离** - Tauri 安全机制
-- **权限最小化** - 只请求必要权限
+## 📥 下载安装
 
-## 📦 安装要求
+### 快速开始（推荐）
+
+1. 下载最新版安装包（仅2.3MB）
+2. 运行安装程序
+3. 输入学号和密码即可使用
 
 ### 系统要求
 - Windows 10/11 (64-bit)
 - macOS 10.15+
 - Linux (多数发行版)
 
-### 开发环境
-- Node.js 18+
-- Rust 1.70+
-- 系统C/C++编译器
+## 🏗️ 架构说明
 
-## 🚀 快速开始
+### 云端SaaS模式（默认）
 
-### 1. 安装依赖
+```
+桌面应用（2.3MB） ──HTTPS──> 云API服务器
+                            ├── Playwright爬虫
+                            ├── OCR识别
+                            └── 数据缓存
+```
+
+**优势**：
+- ✅ 安装包小（2.3MB）
+- ✅ 无需配置环境
+- ✅ 自动更新维护
+
+## 🚀 自己部署
+
+### 本地开发
 
 ```bash
-cd bjtu-tracker-desktop
+# 1. 克隆仓库
+git clone https://github.com/YOUR_USERNAME/homework-tracker.git
+cd homework-tracker
+
+# 2. 安装依赖
 npm install
-```
 
-### 2. 安装 Rust
-
-**Windows:**
-```bash
-# 下载并运行 rustup-init.exe
-https://rustup.rs/
-```
-
-**macOS/Linux:**
-```bash
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-```
-
-### 3. 生成应用图标（可选）
-
-准备一个 1024x1024 的 PNG 图标，命名为 `app-icon.png`，然后运行：
-
-```bash
-npm run tauri icon app-icon.png
-```
-
-### 4. 启动后端服务
-
-在另一个终端中启动后端 API：
-
-```bash
-cd ../bjtu-tracker-nextgen/backend-bun
+# 3. 启动后端（另一个终端）
+cd backend-bun
 npm install
 npm run dev:node
-```
 
-后端将运行在 `http://localhost:3001`
-
-### 5. 运行桌面应用
-
-```bash
+# 4. 启动前端
 npm run tauri:dev
 ```
 
-首次运行会下载并编译 Rust 依赖，需要几分钟时间。
+### 云端部署
 
-##  打包发布
+详见 [部署文档](./DEPLOYMENT.md)
 
-### 构建生产版本
-
+**快速部署：**
 ```bash
-npm run tauri:build
+# 上传后端到服务器
+cd backend-bun
+scp -r . user@your-server:/var/www/homework-tracker
+
+# 服务器上安装依赖
+ssh user@your-server
+cd /var/www/homework-tracker
+npm install
+npx playwright install chromium
+
+# 使用PM2启动
+pm2 start server.ts --name homework-tracker
+pm2 save && pm2 startup
 ```
 
-打包后的文件位于 `src-tauri/target/release/bundle/` 目录：
+### 构建安装包
 
-- **Windows**: `.msi` 安装包 (~3MB)
-- **macOS**: `.dmg` / `.app` (~5MB)
-- **Linux**: `.deb` / `.AppImage` (~4MB)
+```bash
+# 指定API地址构建
+API_BASE_URL="https://your-domain.com" npm run tauri:build
+```
+
+打包后的文件在 `src-tauri/target/release/bundle/`
 
 ## 📁 项目结构
 
