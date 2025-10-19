@@ -54,6 +54,7 @@ app-icon.png
 nul
 *.png
 cache/
+**/cache/
 node_modules/
 browsers/
 
