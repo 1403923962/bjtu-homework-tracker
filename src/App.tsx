@@ -4,13 +4,13 @@ import {
   GraduationCap, Sparkles, Moon, Sun, Clock, CheckCircle,
   XCircle, Calendar, Users, BookOpen, Minimize2, X,
   RefreshCw, Home, List, Settings as SettingsIcon,
-  ChevronDown, ChevronUp
+  ChevronDown, ChevronUp, EyeOff, Eye, Trash2
 } from 'lucide-react'
 import { appWindow } from '@tauri-apps/api/window'
 import { invoke } from '@tauri-apps/api/tauri'
 import { open } from '@tauri-apps/api/shell'
 
-type View = 'home' | 'detail' | 'settings'
+type View = 'home' | 'detail' | 'ignored' | 'settings'
 
 function App() {
   const [darkMode, setDarkMode] = useState(false)
@@ -24,6 +24,8 @@ function App() {
   const [expandedCourses, setExpandedCourses] = useState<Set<string>>(new Set())
   const [showCompleted, setShowCompleted] = useState(false)
   const [cacheInfo, setCacheInfo] = useState<{ cached: boolean; age_minutes?: number; timestamp?: number } | null>(null)
+  const [ignoredHomeworks, setIgnoredHomeworks] = useState<any[]>([])
+  const [loadingIgnored, setLoadingIgnored] = useState(false)
 
   // 首次启动检测 - 从localStorage加载保存的学号
   useEffect(() => {
@@ -203,7 +205,59 @@ function App() {
     setIsLoggedIn(false)
     setHomeworks([])
     setCacheInfo(null)
+    setIgnoredHomeworks([])
   }
+
+  // 从 localStorage 加载已忽略的作业ID列表
+  useEffect(() => {
+    if (studentId && isLoggedIn) {
+      const key = `ignored_homeworks_${studentId}`
+      const saved = localStorage.getItem(key)
+      if (saved) {
+        try {
+          const ignored = JSON.parse(saved)
+          setIgnoredHomeworks(ignored || [])
+        } catch (error) {
+          console.error('加载已忽略作业失败:', error)
+        }
+      }
+    }
+  }, [studentId, isLoggedIn])
+
+  // 忽略作业
+  const handleIgnoreHomework = (hw: any) => {
+    const ignoredItem = {
+      homework_id: hw.id,
+      course_name: hw.course_name,
+      title: hw.title,
+      ignored_at: Date.now()
+    }
+
+    const newIgnored = [...ignoredHomeworks, ignoredItem]
+    setIgnoredHomeworks(newIgnored)
+
+    // 保存到 localStorage
+    const key = `ignored_homeworks_${studentId}`
+    localStorage.setItem(key, JSON.stringify(newIgnored))
+  }
+
+  // 取消忽略作业
+  const handleUnignoreHomework = (homeworkId: string) => {
+    const newIgnored = ignoredHomeworks.filter(item => item.homework_id !== homeworkId)
+    setIgnoredHomeworks(newIgnored)
+
+    // 保存到 localStorage
+    const key = `ignored_homeworks_${studentId}`
+    localStorage.setItem(key, JSON.stringify(newIgnored))
+  }
+
+  // 检查作业是否被忽略
+  const isHomeworkIgnored = (homeworkId: string) => {
+    return ignoredHomeworks.some(item => item.homework_id === homeworkId)
+  }
+
+  // 过滤掉已忽略的作业
+  const filteredHomeworks = homeworks.filter(hw => !isHomeworkIgnored(hw.id))
 
   const getTimeInfo = (dueTime: string | null) => {
     if (!dueTime) return {
@@ -260,8 +314,8 @@ function App() {
     }
   }
 
-  // 按课程分组作业
-  const groupedHomeworks = homeworks.reduce((acc, hw) => {
+  // 按课程分组作业（使用过滤后的作业列表）
+  const groupedHomeworks = filteredHomeworks.reduce((acc, hw) => {
     if (!acc[hw.course_name]) {
       acc[hw.course_name] = []
     }
@@ -269,8 +323,8 @@ function App() {
     return acc
   }, {} as Record<string, any[]>)
 
-  // 未交作业
-  const unfinishedHomeworks = homeworks.filter(hw => hw.submit_status !== '已提交')
+  // 未交作业（使用过滤后的作业列表）
+  const unfinishedHomeworks = filteredHomeworks.filter(hw => hw.submit_status !== '已提交')
 
   // Window controls
   const minimizeWindow = () => {
@@ -408,7 +462,7 @@ function App() {
 
   // 主页 - 作业概览
   const renderHomeView = () => {
-    const displayHomeworks = showCompleted ? homeworks : unfinishedHomeworks
+    const displayHomeworks = showCompleted ? filteredHomeworks : unfinishedHomeworks
 
     return (
       <div className="flex-1 overflow-y-auto p-4 pb-20">
@@ -427,7 +481,12 @@ function App() {
               </button>
             </div>
             <p className="text-gray-600 dark:text-gray-400 flex items-center gap-2">
-              {showCompleted ? `${homeworks.length} 项作业` : `${unfinishedHomeworks.length} 项待完成`}
+              {showCompleted ? `${filteredHomeworks.length} 项作业` : `${unfinishedHomeworks.length} 项待完成`}
+              {ignoredHomeworks.length > 0 && (
+                <span className="text-sm text-gray-500">
+                  (已隐藏 {ignoredHomeworks.length} 项)
+                </span>
+              )}
               {refreshing && (
                 <span className="flex items-center gap-1 text-purple-600 dark:text-purple-400">
                   <RefreshCw className="w-4 h-4 animate-spin" />
@@ -514,6 +573,18 @@ function App() {
                             </div>
                           )}
                         </div>
+
+                        {/* Ignore button */}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleIgnoreHomework(hw)
+                          }}
+                          className="p-2 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                          title="隐藏此作业"
+                        >
+                          <EyeOff className="w-5 h-5 text-gray-500 dark:text-gray-400" />
+                        </button>
 
                         {/* Urgent indicator */}
                         {timeInfo.urgent && !isCompleted && (
@@ -659,6 +730,77 @@ function App() {
     </div>
   )
 
+  // 已忽略作业页
+  const renderIgnoredView = () => (
+    <div className="flex-1 overflow-y-auto p-4 pb-20">
+      <div className="max-w-4xl mx-auto">
+        {/* Header */}
+        <div className="mb-6">
+          <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-purple-600 to-pink-600 mb-2">
+            已隐藏作业
+          </h1>
+          <p className="text-gray-600 dark:text-gray-400">
+            {ignoredHomeworks.length} 项已隐藏的作业
+          </p>
+        </div>
+
+        {/* 已忽略列表 */}
+        <div className="space-y-3">
+          <AnimatePresence>
+            {ignoredHomeworks.length === 0 ? (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="text-center py-12 glass rounded-2xl"
+              >
+                <EyeOff className="w-16 h-16 text-gray-400 dark:text-gray-500 mx-auto mb-4" />
+                <p className="text-gray-500 dark:text-gray-400 text-lg">
+                  暂无隐藏的作业
+                </p>
+              </motion.div>
+            ) : (
+              ignoredHomeworks.map((item, index) => (
+                <motion.div
+                  key={item.homework_id}
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: 20 }}
+                  transition={{ delay: index * 0.05 }}
+                  className="glass rounded-xl p-4"
+                >
+                  <div className="flex items-start gap-3">
+                    <EyeOff className="w-5 h-5 text-gray-400 dark:text-gray-500 mt-1" />
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-semibold text-gray-800 dark:text-white mb-1">
+                        {item.title}
+                      </h3>
+                      <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400 mb-2">
+                        <BookOpen className="w-4 h-4 text-purple-500" />
+                        <span>{item.course_name}</span>
+                      </div>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        隐藏于 {new Date(item.ignored_at).toLocaleString('zh-CN')}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => {
+                        handleUnignoreHomework(item.homework_id)
+                      }}
+                      className="p-2 hover:bg-green-100 dark:hover:bg-green-900/30 rounded-lg transition-colors"
+                      title="恢复显示"
+                    >
+                      <Eye className="w-5 h-5 text-green-500" />
+                    </button>
+                  </div>
+                </motion.div>
+              ))
+            )}
+          </AnimatePresence>
+        </div>
+      </div>
+    </div>
+  )
+
   // 设置页
   const renderSettingsView = () => (
     <div className="flex-1 overflow-y-auto p-4 pb-20">
@@ -751,6 +893,7 @@ function App() {
       {/* Main content */}
       {currentView === 'home' && renderHomeView()}
       {currentView === 'detail' && renderDetailView()}
+      {currentView === 'ignored' && renderIgnoredView()}
       {currentView === 'settings' && renderSettingsView()}
 
       {/* Bottom navigation */}
@@ -778,6 +921,23 @@ function App() {
           >
             <List className="w-6 h-6" />
             <span className="text-xs font-medium">详情</span>
+          </button>
+
+          <button
+            onClick={() => setCurrentView('ignored')}
+            className={`flex flex-col items-center gap-1 p-2 rounded-lg transition-colors relative ${
+              currentView === 'ignored'
+                ? 'text-purple-600 dark:text-purple-400 bg-purple-100 dark:bg-purple-900/50'
+                : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+            }`}
+          >
+            <EyeOff className="w-6 h-6" />
+            <span className="text-xs font-medium">已隐藏</span>
+            {ignoredHomeworks.length > 0 && (
+              <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+                {ignoredHomeworks.length}
+              </span>
+            )}
           </button>
 
           <button

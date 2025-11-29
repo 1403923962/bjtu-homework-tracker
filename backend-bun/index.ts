@@ -5,14 +5,16 @@ import crypto from 'crypto'
 import { AutoLogin } from './login'
 import { BJTUClientPlaywright } from './bjtu_client_playwright'
 import { CacheManager } from './cache_manager'
+import { IgnoredHomeworkManager } from './ignored_homework'
 
 const app = new Hono()
 
 // CORS middleware
 app.use('/*', cors())
 
-// Initialize cache manager
+// Initialize cache manager and ignored homework manager
 const cacheManager = new CacheManager('./cache')
+const ignoredManager = new IgnoredHomeworkManager('./cache/ignored')
 
 // Types and Schemas
 const LoginSchema = z.object({
@@ -195,9 +197,16 @@ app.post('/api/homework-cache', async (c) => {
     const age = cacheManager.getAge(login.student_id)
     const ageMinutes = age ? Math.floor(age / (1000 * 60)) : 0
 
+    // Filter out ignored homework
+    const ignoredList = await ignoredManager.getIgnoredList(login.student_id)
+    const ignoredIds = new Set(ignoredList.map(item => item.homework_id))
+    const filteredData = cache.data.filter((hw: any) => !ignoredIds.has(hw.id))
+
+    console.log(`🔍 过滤掉 ${ignoredIds.size} 个忽略作业，剩余 ${filteredData.length} 个`)
+
     return c.json({
       success: true,
-      data: cache.data,
+      data: filteredData,
       summary: cache.summary,
       semester: cache.semester,
       cached: true,
@@ -299,9 +308,16 @@ app.post('/api/homework-query', async (c) => {
     // Save to cache
     await cacheManager.save(login.student_id, filtered, summary, semester)
 
+    // Filter out ignored homework
+    const ignoredList = await ignoredManager.getIgnoredList(login.student_id)
+    const ignoredIds = new Set(ignoredList.map(item => item.homework_id))
+    const filteredData = filtered.filter(hw => !ignoredIds.has(hw.id))
+
+    console.log(`🔍 过滤掉 ${ignoredIds.size} 个忽略作业，最终返回 ${filteredData.length} 个`)
+
     return c.json({
       success: true,
-      data: filtered,
+      data: filteredData,
       summary,
       semester,
       cached: false,
@@ -320,6 +336,89 @@ app.post('/api/homework-query', async (c) => {
   }
 })
 
+// Ignore homework API
+app.post('/api/ignore-homework', async (c) => {
+  try {
+    const body = await c.req.json()
+    const { student_id, homework_id, course_name, title } = body
+
+    if (!student_id || !homework_id) {
+      return c.json({
+        success: false,
+        error: 'Missing required fields: student_id, homework_id'
+      }, 400)
+    }
+
+    await ignoredManager.addIgnored(student_id, homework_id, course_name || '', title || '')
+
+    return c.json({
+      success: true,
+      message: 'Homework ignored successfully'
+    })
+  } catch (error: any) {
+    console.error(`❌ 忽略作业失败: ${error.message}`)
+    return c.json({
+      success: false,
+      error: error.message || 'Internal server error'
+    }, 500)
+  }
+})
+
+// Unignore homework API
+app.post('/api/unignore-homework', async (c) => {
+  try {
+    const body = await c.req.json()
+    const { student_id, homework_id } = body
+
+    if (!student_id || !homework_id) {
+      return c.json({
+        success: false,
+        error: 'Missing required fields: student_id, homework_id'
+      }, 400)
+    }
+
+    await ignoredManager.removeIgnored(student_id, homework_id)
+
+    return c.json({
+      success: true,
+      message: 'Homework unignored successfully'
+    })
+  } catch (error: any) {
+    console.error(`❌ 取消忽略失败: ${error.message}`)
+    return c.json({
+      success: false,
+      error: error.message || 'Internal server error'
+    }, 500)
+  }
+})
+
+// Get ignored homeworks list
+app.get('/api/ignored-homeworks/:student_id', async (c) => {
+  try {
+    const studentId = c.req.param('student_id')
+
+    if (!studentId) {
+      return c.json({
+        success: false,
+        error: 'Missing student_id'
+      }, 400)
+    }
+
+    const ignoredList = await ignoredManager.getIgnoredList(studentId)
+
+    return c.json({
+      success: true,
+      data: ignoredList
+    })
+  } catch (error: any) {
+    console.error(`❌ 获取忽略列表失败: ${error.message}`)
+    return c.json({
+      success: false,
+      error: error.message || 'Internal server error'
+    }, 500)
+  }
+})
+
 export default app
 
 // For Bun
@@ -328,7 +427,11 @@ console.log(`🚀 BJTU Homework Tracker API (Desktop Edition)`)
 console.log(`📡 Server running on http://localhost:${port}`)
 console.log(`🔧 Stack: Bun + Hono + Playwright + Tesseract.js`)
 console.log(`💾 Cache: Enabled (./cache)`)
+console.log(`🙈 Ignored: Enabled (./cache/ignored)`)
 console.log(`📋 Endpoints:`)
 console.log(`   - GET  /health`)
-console.log(`   - POST /api/homework-cache  (快速返回缓存数据)`)
-console.log(`   - POST /api/homework-query  (完整刷新并缓存)`)
+console.log(`   - POST /api/homework-cache        (快速返回缓存数据)`)
+console.log(`   - POST /api/homework-query        (完整刷新并缓存)`)
+console.log(`   - POST /api/ignore-homework       (忽略作业)`)
+console.log(`   - POST /api/unignore-homework     (取消忽略)`)
+console.log(`   - GET  /api/ignored-homeworks/:id (获取忽略列表)`)
