@@ -6,9 +6,21 @@ import {
   RefreshCw, Home, List, Settings as SettingsIcon,
   ChevronDown, ChevronUp, EyeOff, Eye, Trash2
 } from 'lucide-react'
-import { appWindow } from '@tauri-apps/api/window'
-import { invoke } from '@tauri-apps/api/tauri'
-import { open } from '@tauri-apps/api/shell'
+import { fetchHomeworkCache, fetchHomeworkFull } from './api'
+
+// 检测是否在 Tauri 桌面环境
+const isTauri = typeof window !== 'undefined' && !!(window as any).__TAURI__
+
+// 动态导入 Tauri API（仅桌面端使用）
+const getTauriApis = async () => {
+  if (!isTauri) return null
+  const [{ appWindow }, { invoke }, { open }] = await Promise.all([
+    import('@tauri-apps/api/window'),
+    import('@tauri-apps/api/tauri'),
+    import('@tauri-apps/api/shell')
+  ])
+  return { appWindow, invoke, open }
+}
 
 type View = 'home' | 'detail' | 'ignored' | 'settings'
 
@@ -55,11 +67,15 @@ function App() {
   const autoLoginWithCache = async (sid: string) => {
     try {
       console.log('🔵 Auto login with cache for:', sid)
-      const cacheResult = await invoke('fetch_homework_cache', {
-        studentId: sid
-      }) as string
+      let cacheData: any
 
-      const cacheData = JSON.parse(cacheResult)
+      if (isTauri) {
+        const tauri = await getTauriApis()
+        const cacheResult = await tauri!.invoke('fetch_homework_cache', { studentId: sid }) as string
+        cacheData = JSON.parse(cacheResult)
+      } else {
+        cacheData = await fetchHomeworkCache(sid)
+      }
 
       if (cacheData.success && cacheData.data.length > 0) {
         setHomeworks(cacheData.data)
@@ -97,12 +113,16 @@ function App() {
       // 1. 先尝试加载缓存 (快速，<100ms)
       try {
         console.log('🔵 Calling fetch_homework_cache...')
-        const cacheResult = await invoke('fetch_homework_cache', {
-          studentId: studentId
-        }) as string
-        console.log('🔵 Cache result:', cacheResult)
+        let cacheData: any
 
-        const cacheData = JSON.parse(cacheResult)
+        if (isTauri) {
+          const tauri = await getTauriApis()
+          const cacheResult = await tauri!.invoke('fetch_homework_cache', { studentId }) as string
+          cacheData = JSON.parse(cacheResult)
+        } else {
+          cacheData = await fetchHomeworkCache(studentId)
+        }
+        console.log('🔵 Cache result:', cacheData)
 
         if (cacheData.success && cacheData.data.length > 0) {
           setHomeworks(cacheData.data)
@@ -118,13 +138,18 @@ function App() {
           setRefreshing(true)
           setTimeout(async () => {
             try {
-              const fullResult = await invoke('fetch_homework_full', {
-                studentId: studentId,
-                password: password || `Bjtu@${studentId}`,
-                finishStatus: 'all'
-              }) as string
-
-              const fullData = JSON.parse(fullResult)
+              let fullData: any
+              if (isTauri) {
+                const tauri = await getTauriApis()
+                const fullResult = await tauri!.invoke('fetch_homework_full', {
+                  studentId,
+                  password: password || `Bjtu@${studentId}`,
+                  finishStatus: 'all'
+                }) as string
+                fullData = JSON.parse(fullResult)
+              } else {
+                fullData = await fetchHomeworkFull(studentId, password || `Bjtu@${studentId}`, 'all')
+              }
 
               if (fullData.success) {
                 setHomeworks(fullData.data)
@@ -145,15 +170,19 @@ function App() {
 
       // 3. 如果没有缓存，执行完整登录 (~60秒)
       console.log('🔵 Calling fetch_homework_full...')
-      const fullResult = await invoke('fetch_homework_full', {
-        studentId: studentId,
-        password: password || `Bjtu@${studentId}`,
-        finishStatus: 'all'
-      }) as string
-      console.log('🔵 Full result received')
-
-      const fullData = JSON.parse(fullResult)
-      console.log('🔵 Full data parsed:', fullData)
+      let fullData: any
+      if (isTauri) {
+        const tauri = await getTauriApis()
+        const fullResult = await tauri!.invoke('fetch_homework_full', {
+          studentId,
+          password: password || `Bjtu@${studentId}`,
+          finishStatus: 'all'
+        }) as string
+        fullData = JSON.parse(fullResult)
+      } else {
+        fullData = await fetchHomeworkFull(studentId, password || `Bjtu@${studentId}`, 'all')
+      }
+      console.log('🔵 Full data received:', fullData)
 
       if (fullData.success) {
         console.log('✅ Login successful, data count:', fullData.data.length)
@@ -179,13 +208,18 @@ function App() {
 
     setRefreshing(true)
     try {
-      const fullResult = await invoke('fetch_homework_full', {
-        studentId: studentId,
-        password: password || `Bjtu@${studentId}`,
-        finishStatus: 'all'
-      }) as string
-
-      const fullData = JSON.parse(fullResult)
+      let fullData: any
+      if (isTauri) {
+        const tauri = await getTauriApis()
+        const fullResult = await tauri!.invoke('fetch_homework_full', {
+          studentId,
+          password: password || `Bjtu@${studentId}`,
+          finishStatus: 'all'
+        }) as string
+        fullData = JSON.parse(fullResult)
+      } else {
+        fullData = await fetchHomeworkFull(studentId, password || `Bjtu@${studentId}`, 'all')
+      }
 
       if (fullData.success) {
         setHomeworks(fullData.data)
@@ -326,13 +360,29 @@ function App() {
   // 未交作业（使用过滤后的作业列表）
   const unfinishedHomeworks = filteredHomeworks.filter(hw => hw.submit_status !== '已提交')
 
-  // Window controls
-  const minimizeWindow = () => {
-    appWindow.minimize()
+  // Window controls (仅桌面端)
+  const minimizeWindow = async () => {
+    if (isTauri) {
+      const tauri = await getTauriApis()
+      tauri?.appWindow.minimize()
+    }
   }
 
-  const closeWindow = () => {
-    appWindow.close()
+  const closeWindow = async () => {
+    if (isTauri) {
+      const tauri = await getTauriApis()
+      tauri?.appWindow.close()
+    }
+  }
+
+  // 打开外部链接
+  const openExternal = async (url: string) => {
+    if (isTauri) {
+      const tauri = await getTauriApis()
+      tauri?.open(url)
+    } else {
+      window.open(url, '_blank')
+    }
   }
 
   const toggleCourse = (courseName: string) => {
@@ -349,18 +399,20 @@ function App() {
   if (!isLoggedIn) {
     return (
       <div className={`min-h-screen relative overflow-hidden ${darkMode && 'dark'} bg-gradient-to-br from-violet-50 via-purple-50 to-fuchsia-50 dark:from-gray-900 dark:via-purple-900 dark:to-violet-900`}>
-        {/* Custom title bar */}
-        <div data-tauri-drag-region className="h-8 bg-transparent flex items-center justify-between px-2 fixed top-0 left-0 right-0 z-50">
-          <div className="text-xs font-medium text-gray-700 dark:text-gray-300 ml-2">BJTU作业追踪器</div>
-          <div className="flex gap-2">
-            <button onClick={minimizeWindow} className="w-6 h-6 flex items-center justify-center hover:bg-gray-200 dark:hover:bg-gray-700 rounded">
-              <Minimize2 className="w-3 h-3" />
-            </button>
-            <button onClick={closeWindow} className="w-6 h-6 flex items-center justify-center hover:bg-red-500 hover:text-white rounded">
-              <X className="w-3 h-3" />
-            </button>
+        {/* Custom title bar - 仅桌面端显示 */}
+        {isTauri && (
+          <div data-tauri-drag-region className="h-8 bg-transparent flex items-center justify-between px-2 fixed top-0 left-0 right-0 z-50">
+            <div className="text-xs font-medium text-gray-700 dark:text-gray-300 ml-2">BJTU作业追踪器</div>
+            <div className="flex gap-2">
+              <button onClick={minimizeWindow} className="w-6 h-6 flex items-center justify-center hover:bg-gray-200 dark:hover:bg-gray-700 rounded">
+                <Minimize2 className="w-3 h-3" />
+              </button>
+              <button onClick={closeWindow} className="w-6 h-6 flex items-center justify-center hover:bg-red-500 hover:text-white rounded">
+                <X className="w-3 h-3" />
+              </button>
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Animated background */}
         <div className="absolute inset-0 overflow-hidden">
@@ -378,7 +430,7 @@ function App() {
         </button>
 
         {/* Login form */}
-        <div className="relative z-10 min-h-screen flex items-center justify-center p-4 pt-12">
+        <div className={`relative z-10 min-h-screen flex items-center justify-center p-4 ${isTauri ? 'pt-12' : ''}`}>
           <motion.div
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
@@ -448,7 +500,7 @@ function App() {
 
               <button
                 type="button"
-                onClick={() => open('https://bksycenter.bjtu.edu.cn/UserInfoSettings/PasswordRetake.aspx?type=3')}
+                onClick={() => openExternal('https://bksycenter.bjtu.edu.cn/UserInfoSettings/PasswordRetake.aspx?type=3')}
                 className="w-full mt-3 text-sm text-gray-600 dark:text-gray-400 hover:text-purple-600 dark:hover:text-purple-400 transition-colors"
               >
                 忘记密码？
@@ -877,18 +929,20 @@ function App() {
 
   return (
     <div className={`min-h-screen ${darkMode && 'dark'} bg-gradient-to-br from-violet-50 via-purple-50 to-fuchsia-50 dark:from-gray-900 dark:via-purple-900 dark:to-violet-900 flex flex-col`}>
-      {/* Custom title bar */}
-      <div data-tauri-drag-region className="h-8 bg-purple-600 dark:bg-purple-900 flex items-center justify-between px-2">
-        <div className="text-xs font-medium text-white ml-2">BJTU作业追踪器</div>
-        <div className="flex gap-2">
-          <button onClick={minimizeWindow} className="w-6 h-6 flex items-center justify-center hover:bg-purple-700 rounded text-white">
-            <Minimize2 className="w-3 h-3" />
-          </button>
-          <button onClick={closeWindow} className="w-6 h-6 flex items-center justify-center hover:bg-red-500 rounded text-white">
-            <X className="w-3 h-3" />
-          </button>
+      {/* Custom title bar - 仅桌面端显示 */}
+      {isTauri && (
+        <div data-tauri-drag-region className="h-8 bg-purple-600 dark:bg-purple-900 flex items-center justify-between px-2">
+          <div className="text-xs font-medium text-white ml-2">BJTU作业追踪器</div>
+          <div className="flex gap-2">
+            <button onClick={minimizeWindow} className="w-6 h-6 flex items-center justify-center hover:bg-purple-700 rounded text-white">
+              <Minimize2 className="w-3 h-3" />
+            </button>
+            <button onClick={closeWindow} className="w-6 h-6 flex items-center justify-center hover:bg-red-500 rounded text-white">
+              <X className="w-3 h-3" />
+            </button>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Main content */}
       {currentView === 'home' && renderHomeView()}

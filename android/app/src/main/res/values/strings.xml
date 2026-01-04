@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">BJTU作业追踪器</string>
+    <string name="title_activity_main">BJTU作业追踪器</string>
+    <string name="package_name">com.bjtu.tracker</string>
+    <string name="custom_url_scheme">com.bjtu.tracker</string>
+</resources>

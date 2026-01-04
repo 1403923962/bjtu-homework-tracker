@@ -12,11 +12,14 @@
     "tauri:build": "tauri build"
   },
   "dependencies": {
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
+    "@capacitor/android": "^8.0.0",
+    "@capacitor/cli": "^8.0.0",
+    "@capacitor/core": "^8.0.0",
+    "@tauri-apps/api": "^1.5.3",
     "framer-motion": "^11.0.0",
     "lucide-react": "^0.312.0",
-    "@tauri-apps/api": "^1.5.3"
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^1.5.9",
